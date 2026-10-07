@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("POSTGRES_PRISMA_URL") // uses connection pooling
+  directUrl = env("POSTGRES_URL_NON_POOLING") // uses a direct connection
+}
+
+
+model Session {
+  id          String   @id @default(cuid())
+  professorName String
+  courseCode  String
+  createdAt   DateTime @default(now())
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime?
+  latitude    Float
+  longitude   Float
+  radius      Float    @default(50) // in meters
+  attendees   AttendanceRecord[]
+}
+
+model AttendanceRecord {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id])
+  studentName String
+  rollNumber  String
+  timestamp   DateTime @default(now())
+  latitude    Float?
+  longitude   Float?
+  deviceFingerprint String?
+  
+  @@unique([sessionId, rollNumber])
+}
