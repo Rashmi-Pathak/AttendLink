@@ -1,227 +1,206 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-    FaMapMarkerAlt,
-    FaCheckCircle,
-    FaExclamationTriangle,
-    FaBroadcastTower,
-    FaWifi,
-    FaShieldAlt,
-    FaArrowLeft,
-    FaSpinner
-} from 'react-icons/fa';
+import { FaMapMarkerAlt, FaCheckCircle, FaExclamationCircle, FaSpinner, FaArrowLeft } from 'react-icons/fa';
 
-export default function StudentPage() {
-    const params = useParams();
-    const sessionId = params.sessionId as string;
-
-    const [status, setStatus] = useState<'idle' | 'locating' | 'submitting' | 'success' | 'error'>('idle');
+export default function StudentSessionPage({ params }: { params: Promise<{ sessionId: string }> }) {
+    const resolvedParams = use(params);
+    const sessionId = resolvedParams.sessionId;
+    
+    const [session, setSession] = useState<any>(null);
+    const [status, setStatus] = useState<'loading' | 'locating' | 'verifying' | 'success' | 'error'>('loading');
     const [message, setMessage] = useState('');
-    const [formData, setFormData] = useState({
-        studentName: '',
-        rollNumber: '',
-    });
+    const [user, setUser] = useState<any>(null);
+    const router = useRouter();
 
     useEffect(() => {
-        const saved = localStorage.getItem('attendlink_student_profile');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                if (parsed.studentName && parsed.rollNumber) {
-                    setFormData({ studentName: parsed.studentName, rollNumber: parsed.rollNumber });
-                }
-            } catch(e) {}
-        }
-    }, []);
-
-    const submitAttendance = async () => {
-        if (!formData.studentName.trim() || !formData.rollNumber.trim()) {
-            setMessage('Please enter both your full name and student roll number.');
-            setStatus('error');
+        const storedUser = localStorage.getItem('attendlink_user');
+        if (!storedUser) {
+            router.push('/login');
             return;
         }
+        setUser(JSON.parse(storedUser));
+    }, [router]);
 
-        setStatus('locating');
-        setMessage('Acquiring high-accuracy wireless coordinates from device...');
-
-        if (!navigator.geolocation) {
-            setMessage('Geolocation is not supported by your current browser.');
+    const fetchSession = async () => {
+        try {
+            setStatus('loading');
+            const res = await fetch(`/api/session/${sessionId}`);
+            if (!res.ok) throw new Error('Session not found or expired');
+            const data = await res.json();
+            
+            if (!data.isActive) throw new Error('This session has been closed');
+            
+            setSession(data);
+            setStatus('locating');
+            verifyLocation(data);
+        } catch (err: any) {
             setStatus('error');
+            setMessage(err.message || 'Failed to load session');
+        }
+    };
+
+    useEffect(() => {
+        if (!user) return;
+        fetchSession();
+    }, [sessionId, user]);
+
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371e3; // Earth radius in meters
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c; // Distance in meters
+    };
+
+    const verifyLocation = (sessionData: any) => {
+        if (!navigator.geolocation) {
+            setStatus('error');
+            setMessage('Geolocation is not supported by your device.');
             return;
         }
 
         navigator.geolocation.getCurrentPosition(
             async (position) => {
-                setStatus('submitting');
-                setMessage('Validating geofence radius with AttendLink server...');
+                const { latitude, longitude } = position.coords;
+                const distance = calculateDistance(
+                    latitude, longitude,
+                    sessionData.latitude, sessionData.longitude
+                );
 
-                try {
-                    const res = await fetch('/api/attendance', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            sessionId: sessionId,
-                            studentName: formData.studentName.trim(),
-                            rollNumber: formData.rollNumber.trim().toUpperCase(),
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude,
-                            deviceFingerprint: typeof window !== 'undefined' ? `${navigator.userAgent}`.slice(0, 50) : 'attendlink-client',
-                        }),
-                    });
-
-                    const data = await res.json();
-
-                    if (!res.ok) {
-                        throw new Error(data.error || 'Failed to verify attendance');
-                    }
-
-                    setStatus('success');
-                    setMessage(`Attendance verified successfully for Roll No: ${formData.rollNumber.trim().toUpperCase()}`);
-                } catch (err: any) {
+                if (distance > sessionData.radius) {
                     setStatus('error');
-                    setMessage(err.message || 'Verification failed');
+                    setMessage(`You are out of range. Distance: ${Math.round(distance)}m (Required: <${sessionData.radius}m)`);
+                    return;
                 }
+
+                markAttendance(latitude, longitude);
             },
             (err) => {
                 setStatus('error');
-                setMessage('Location access denied or timed out (' + err.message + '). Please allow location permissions in your browser settings to verify your classroom presence.');
+                setMessage(`Location error: ${err.message}. Please enable GPS permissions.`);
             },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     };
 
+    const markAttendance = async (lat: number, lng: number) => {
+        setStatus('verifying');
+        
+        try {
+            const deviceId = localStorage.getItem('attendlink_device_id') || 'unknown';
+            
+            const res = await fetch('/api/attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: sessionId,
+                    studentName: user.name,
+                    rollNumber: user.rollNumber,
+                    latitude: lat,
+                    longitude: lng,
+                    deviceFingerprint: deviceId
+                })
+            });
+
+            const data = await res.json();
+            
+            if (res.ok) {
+                setStatus('success');
+                setMessage('Attendance marked successfully!');
+            } else {
+                setStatus('error');
+                setMessage(data.error || 'Failed to mark attendance');
+            }
+        } catch (err: any) {
+            setStatus('error');
+            setMessage('Network error while marking attendance.');
+        }
+    };
+
+    if (!user) return null;
+
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
-            {/* Header */}
-            <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-20">
-                <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Link href="/" className="p-2 -ml-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors">
-                            <FaArrowLeft className="text-sm" />
-                        </Link>
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-sm">
-                            <FaBroadcastTower className="text-sm" />
-                        </div>
-                        <div>
-                            <span className="font-bold text-slate-200 tracking-tight">AttendLink</span>
-                            <span className="text-slate-500 text-xs ml-2 hidden sm:inline">Student Check-In</span>
-                        </div>
-                    </div>
+        <div className="min-h-screen bg-[#0a0f1c] flex items-center justify-center p-4 font-sans text-slate-200 selection:bg-cyan-500/30">
+            <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none" />
+            
+            <div className="w-full max-w-md bg-[#131b2e] border border-slate-800 rounded-2xl shadow-[0_0_30px_rgba(6,182,212,0.1)] p-8 relative z-10 overflow-hidden">
+                <Link href="/student" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-cyan-400 transition-colors mb-8">
+                    <FaArrowLeft /> Back to Dashboard
+                </Link>
 
-                    <div className="flex items-center gap-1.5 text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full">
-                        <FaWifi className="text-[11px]" />
-                        <span>Wireless Verification</span>
-                    </div>
-                </div>
-            </header>
+                <div className="text-center">
+                    {status === 'loading' && (
+                        <div className="flex flex-col items-center">
+                            <FaSpinner className="text-4xl text-cyan-400 animate-spin mb-4" />
+                            <h2 className="text-xl font-semibold text-white">Loading Session...</h2>
+                        </div>
+                    )}
 
-            {/* Main Content */}
-            <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8 sm:py-12 flex flex-col justify-center">
-                {status === 'success' ? (
-                    <div className="bg-slate-900/90 border border-emerald-500/30 p-8 rounded-2xl text-center shadow-2xl backdrop-blur-sm animate-fade-in">
-                        <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-4 text-3xl">
-                            <FaCheckCircle />
+                    {status === 'locating' && (
+                        <div className="flex flex-col items-center">
+                            <div className="relative">
+                                <FaMapMarkerAlt className="text-5xl text-cyan-400 mb-4 relative z-10" />
+                                <span className="absolute top-0 left-0 w-full h-full bg-cyan-400 rounded-full blur-md animate-ping opacity-50"></span>
+                            </div>
+                            <h2 className="text-xl font-semibold text-white">Acquiring GPS Signal...</h2>
+                            <p className="text-sm text-slate-400 mt-2">Checking if you are within the classroom geofence.</p>
                         </div>
-                        <h2 className="text-2xl font-bold text-white mb-2">Presence Verified!</h2>
-                        <p className="text-sm text-slate-300 mb-6 leading-relaxed">
-                            {message}
-                        </p>
-                        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 font-mono mb-6">
-                            Session: {sessionId}
+                    )}
+
+                    {status === 'verifying' && (
+                        <div className="flex flex-col items-center">
+                            <FaSpinner className="text-4xl text-blue-400 animate-spin mb-4" />
+                            <h2 className="text-xl font-semibold text-white">Verifying Identity...</h2>
                         </div>
-                        <Link
-                            href="/"
-                            className="inline-flex items-center justify-center w-full py-3 px-4 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all"
-                        >
-                            Return to Homepage
-                        </Link>
-                    </div>
-                ) : (
-                    <div className="bg-slate-900/90 border border-slate-800 p-6 sm:p-8 rounded-2xl shadow-2xl backdrop-blur-sm">
-                        <div className="text-center mb-6">
-                            <h1 className="text-2xl font-bold text-white tracking-tight">Mark Attendance</h1>
-                            <p className="text-xs text-slate-400 mt-1">
-                                High-precision geofencing verifies you are physically present in class.
+                    )}
+
+                    {status === 'success' && (
+                        <div className="flex flex-col items-center">
+                            <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center border border-emerald-500/30 mb-4 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                                <FaCheckCircle className="text-4xl text-emerald-400" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-white mb-2">Verified</h2>
+                            <p className="text-slate-400 text-sm">{message}</p>
+                            
+                            <div className="mt-8 bg-slate-900/50 border border-slate-800 rounded-xl p-4 w-full text-left space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500 text-sm">Course</span>
+                                    <span className="text-white font-medium">{session?.courseCode}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500 text-sm">Roll Number</span>
+                                    <span className="text-cyan-400 font-mono">{user.rollNumber}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {status === 'error' && (
+                        <div className="flex flex-col items-center">
+                            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center border border-red-500/30 mb-4 shadow-[0_0_15px_rgba(239,68,68,0.3)]">
+                                <FaExclamationCircle className="text-4xl text-red-400" />
+                            </div>
+                            <h2 className="text-xl font-bold text-white mb-2">Check-in Failed</h2>
+                            <p className="text-red-300 text-sm bg-red-950/30 px-4 py-3 rounded-lg border border-red-900/50 w-full">
+                                {message}
                             </p>
-                        </div>
-
-                        {status === 'error' && (
-                            <div className="mb-5 p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-start gap-3">
-                                <FaExclamationTriangle className="text-rose-400 shrink-0 mt-0.5" />
-                                <span>{message}</span>
-                            </div>
-                        )}
-
-                        {(status === 'locating' || status === 'submitting') && (
-                            <div className="mb-5 p-4 rounded-xl bg-indigo-950/40 border border-indigo-500/30 text-indigo-300 text-xs sm:text-sm flex items-center gap-3">
-                                <FaSpinner className="animate-spin text-indigo-400 shrink-0" />
-                                <span>{message}</span>
-                            </div>
-                        )}
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                                    Full Name
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Alex Johnson"
-                                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
-                                    value={formData.studentName}
-                                    onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                                    disabled={status === 'locating' || status === 'submitting'}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                                    Student Roll Number / ID
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. 21CS045"
-                                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
-                                    value={formData.rollNumber}
-                                    onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value })}
-                                    disabled={status === 'locating' || status === 'submitting'}
-                                />
-                            </div>
-
-                            <button
-                                onClick={submitAttendance}
-                                disabled={status === 'locating' || status === 'submitting'}
-                                className="w-full py-3.5 px-6 rounded-xl font-semibold bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white shadow-lg shadow-indigo-600/30 transition-all duration-200 active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer mt-2 text-sm"
+                            
+                            <button 
+                                onClick={fetchSession}
+                                className="mt-8 w-full py-3 px-4 rounded-full bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold transition-colors border border-slate-700"
                             >
-                                {status === 'locating' || status === 'submitting' ? (
-                                    <>
-                                        <FaSpinner className="animate-spin" />
-                                        <span>Verifying Location...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <FaMapMarkerAlt />
-                                        <span>Verify Location & Check In</span>
-                                    </>
-                                )}
+                                Try Again
                             </button>
-
-                            <div className="pt-2 flex items-center justify-center gap-1.5 text-xs text-slate-500">
-                                <FaShieldAlt className="text-slate-600 text-[11px]" />
-                                <span>Anti-proxy verification requires device location consent</span>
-                            </div>
                         </div>
-                    </div>
-                )}
-            </main>
-
-            {/* Footer */}
-            <footer className="border-t border-slate-900 bg-slate-950 py-4 text-center text-xs text-slate-400">
-                <span>AttendLink &mdash; Smart Wireless & Location-Aware Attendance System</span>
-            </footer>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

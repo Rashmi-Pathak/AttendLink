@@ -48,7 +48,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Location data is required' }, { status: 400 });
         }
 
-        // 3. Check for duplicate attendance
+        // 3. Check for duplicate attendance (Same Roll Number)
         const existingRecord = await prisma.attendanceRecord.findUnique({
             where: {
                 sessionId_rollNumber: {
@@ -60,6 +60,22 @@ export async function POST(request: Request) {
 
         if (existingRecord) {
             return NextResponse.json({ error: 'Attendance already marked for this roll number' }, { status: 400 });
+        }
+
+        // 3.5 STRICT DEVICE FINGERPRINTING: Prevent one device from marking multiple students
+        if (deviceFingerprint) {
+            const deviceUsed = await prisma.attendanceRecord.findFirst({
+                where: {
+                    sessionId,
+                    deviceFingerprint,
+                }
+            });
+
+            if (deviceUsed && deviceUsed.rollNumber !== rollNumber) {
+                return NextResponse.json({ 
+                    error: `Proxy blocked: This device was already used to mark attendance for Roll No: ${deviceUsed.rollNumber}.` 
+                }, { status: 403 });
+            }
         }
 
         // 4. Create Record
