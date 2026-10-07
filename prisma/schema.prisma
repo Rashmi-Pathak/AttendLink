@@ -11,6 +11,7 @@ model Session {
   id          String   @id @default(cuid())
   professorName String
   courseCode  String
+  cohort      String   @default("General")
   createdAt   DateTime @default(now())
   isActive    Boolean  @default(true)
   expiresAt   DateTime?

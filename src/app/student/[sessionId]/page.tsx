@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -24,6 +24,18 @@ export default function StudentPage() {
         studentName: '',
         rollNumber: '',
     });
+
+    useEffect(() => {
+        const saved = localStorage.getItem('attendlink_student_profile');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                if (parsed.studentName && parsed.rollNumber) {
+                    setFormData({ studentName: parsed.studentName, rollNumber: parsed.rollNumber });
+                }
+            } catch(e) {}
+        }
+    }, []);
 
     const submitAttendance = async () => {
         if (!formData.studentName.trim() || !formData.rollNumber.trim()) {

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { professorName, courseCode, latitude, longitude, radius, durationMinutes } = body;
+        const { professorName, courseCode, cohort, latitude, longitude, radius, durationMinutes } = body;
 
         const expiresAt = new Date(Date.now() + (durationMinutes || 1) * 60 * 1000);
         console.log(`Creating session. Duration: ${durationMinutes}m. Expires at: ${expiresAt.toISOString()}`);
@@ -13,6 +13,7 @@ export async function POST(request: Request) {
             data: {
                 professorName,
                 courseCode,
+                cohort: cohort || "General",
                 latitude,
                 longitude,
                 radius: radius || 50,

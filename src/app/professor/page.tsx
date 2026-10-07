@@ -23,11 +23,14 @@ export default function ProfessorDashboard() {
     const [formData, setFormData] = useState({
         professorName: '',
         courseCode: '',
+        cohort: 'TE-IT',
         radius: 50,
         durationMinutes: 15,
     });
     const [timeLeft, setTimeLeft] = useState<string>('');
     const [copySuccess, setCopySuccess] = useState(false);
+
+    const availableCohorts = ['FE-GEN', 'SE-IT', 'TE-IT', 'BE-IT', 'SE-CS', 'TE-CS', 'BE-CS', 'SE-EXTC', 'TE-EXTC', 'BE-EXTC', 'General'];
 
     const createSession = async () => {
         setLoading(true);
@@ -168,10 +171,11 @@ export default function ProfessorDashboard() {
             doc.setTextColor(51, 65, 85);
             doc.setFontSize(10);
             doc.text(`Course Code: ${session.courseCode}`, 14, 38);
-            doc.text(`Faculty / Instructor: ${session.professorName}`, 14, 44);
-            doc.text(`Date & Time: ${new Date(session.createdAt).toLocaleString()}`, 14, 50);
-            doc.text(`Geofence Radius: ${session.radius} meters`, 14, 56);
-            doc.text(`Verified Attendees: ${session.attendees.length}`, 14, 62);
+            doc.text(`Target Class: ${session.cohort}`, 14, 44);
+            doc.text(`Faculty / Instructor: ${session.professorName}`, 14, 50);
+            doc.text(`Date & Time: ${new Date(session.createdAt).toLocaleString()}`, 14, 56);
+            doc.text(`Geofence Radius: ${session.radius} meters`, 14, 62);
+            doc.text(`Verified Attendees: ${session.attendees.length}`, 14, 68);
 
             const tableColumn = ["#", "Student Name", "Roll Number", "Verification Time", "Status"];
             const tableRows = session.attendees.map((att: any, idx: number) => [
@@ -185,7 +189,7 @@ export default function ProfessorDashboard() {
             autoTable(doc, {
                 head: [tableColumn],
                 body: tableRows,
-                startY: 70,
+                startY: 76,
                 theme: 'striped',
                 headStyles: { fillColor: [79, 70, 229] },
                 styles: { fontSize: 9 },
@@ -237,7 +241,7 @@ export default function ProfessorDashboard() {
                                 Launch Attendance Session
                             </h1>
                             <p className="mt-2 text-sm text-slate-400">
-                                Capture your physical location to anchor a geofence zone for student wireless check-ins.
+                                Capture your physical location to anchor a geofence zone and broadcast to your class.
                             </p>
                         </div>
 
@@ -263,17 +267,31 @@ export default function ProfessorDashboard() {
                                     />
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                                        Course Code / Lecture Title
-                                    </label>
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. WCS401 - Wireless Systems"
-                                        className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
-                                        value={formData.courseCode}
-                                        onChange={(e) => setFormData({ ...formData, courseCode: e.target.value })}
-                                    />
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                                            Course Code / Title
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. WAMC"
+                                            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
+                                            value={formData.courseCode}
+                                            onChange={(e) => setFormData({ ...formData, courseCode: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                                            Target Class (Cohort)
+                                        </label>
+                                        <select
+                                            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm appearance-none"
+                                            value={formData.cohort}
+                                            onChange={(e) => setFormData({ ...formData, cohort: e.target.value })}
+                                        >
+                                            {availableCohorts.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

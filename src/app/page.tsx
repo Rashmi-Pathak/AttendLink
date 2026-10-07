@@ -84,26 +84,29 @@ export default function Home() {
           </Link>
 
           {/* Student Flow Info Card */}
-          <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-900/40 border border-slate-800 text-left backdrop-blur-sm flex flex-col justify-between">
+          <Link
+            href="/student"
+            className="group relative p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-900/40 border border-slate-800 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 text-left backdrop-blur-sm flex flex-col justify-between"
+          >
             <div>
-              <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-xl mb-5">
+              <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-xl group-hover:scale-110 group-hover:bg-cyan-500 group-hover:text-white transition-all duration-300 mb-5">
                 <FaUserGraduate />
               </div>
-              <h2 className="text-xl font-bold text-white flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white group-hover:text-cyan-300 transition-colors flex items-center justify-between">
                 <span>Student Check-In</span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                  Via Direct Link
+                  Live Dashboard
                 </span>
               </h2>
               <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-                Students access the active session link shared by their instructor, authorize device coordinates, and submit verifiable presence within the geofenced zone.
+                Log into your class dashboard to see live sessions instantly, authorize device coordinates, and submit verifiable presence within the geofenced zone.
               </p>
             </div>
-            <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center gap-2 text-xs text-slate-400 font-mono">
-              <span className="w-2 h-2 rounded-full bg-cyan-400" />
-              <span>/student/[session-id]</span>
+            <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center gap-2 text-xs text-cyan-400 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span>Enter Dashboard →</span>
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* Architecture flow diagram banner */}
